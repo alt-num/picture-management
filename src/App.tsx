@@ -7,6 +7,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Login from "@/pages/Login";
 import Dashboard from "@/pages/Dashboard";
+import AboutIcon from "@/components/AboutIcon";
 
 const queryClient = new QueryClient();
 
@@ -22,6 +23,7 @@ const App = () => (
               <Route path="/dashboard" element={<Dashboard />} />
             </Route>
           </Routes>
+          <AboutIcon />
           <Toaster />
           <Sonner />
         </AuthProvider>
