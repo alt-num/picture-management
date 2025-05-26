@@ -23,7 +23,7 @@ const __dirname = path.dirname(__filename);
 
 dotenv.config();
 const app = express();
-const port = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3001;
 
 // Set up file upload
 const uploadsDir = path.join(__dirname, 'uploads');
@@ -60,6 +60,7 @@ const upload = multer({
 
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Database sync and initial admin creation
@@ -96,7 +97,8 @@ app.post('/api/profiles', upload.single('picture'), [
   try {
     console.log('Received profile creation request:', {
       body: req.body,
-      file: req.file
+      file: req.file,
+      headers: req.headers
     });
 
     const errors = validationResult(req);
@@ -106,18 +108,24 @@ app.post('/api/profiles', upload.single('picture'), [
     }
 
     const pictureUrl = req.file ? 
-      `http://localhost:${port}/uploads/${req.file.filename}` : 
+      `http://localhost:${PORT}/uploads/${req.file.filename}` : 
       '/placeholder.svg';
+
+    console.log('Creating profile with data:', {
+      ...req.body,
+      pictureUrl
+    });
 
     const profile = await Profile.create({
       ...req.body,
       pictureUrl
     });
 
+    console.log('Profile created successfully:', profile.toJSON());
     res.status(201).json(profile);
   } catch (error) {
     console.error('Error creating profile:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', details: error.message });
   }
 });
 
@@ -243,7 +251,7 @@ app.put('/api/profiles/:id', upload.single('picture'), [
       }
       
       // Update with new picture URL
-      updateData.pictureUrl = `http://localhost:${port}/uploads/${req.file.filename}`;
+      updateData.pictureUrl = `http://localhost:${PORT}/uploads/${req.file.filename}`;
     }
 
     console.log('Updating profile with data:', updateData);
@@ -328,6 +336,6 @@ app.post('/api/remarks', createRemark);
 app.put('/api/remarks/:id', updateRemark);
 app.delete('/api/remarks/:id', deleteRemark);
 
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { toast } from "sonner";
+import { apiClient } from "@/lib/api-client";
 
 interface User {
   id: string;
@@ -38,19 +39,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           return;
         }
 
-        const response = await fetch('http://localhost:3001/api/auth/validate', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-
-        if (!response.ok) {
-          throw new Error('Invalid session');
-        }
-
+        await apiClient.validateToken(token);
         const parsedUser = JSON.parse(storedUser);
         setUser(parsedUser);
-        // Only redirect to dashboard if we're on the login page
+        
         if (location.pathname === '/login') {
           navigate("/dashboard");
         }
@@ -72,20 +64,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const login = async (username: string, password: string) => {
     try {
-      const response = await fetch('http://localhost:3001/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ username, password }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Login failed');
-      }
-
-      const data = await response.json();
+      const data = await apiClient.login(username, password);
       setUser(data.user);
       localStorage.setItem("user", JSON.stringify(data.user));
       localStorage.setItem("token", data.token);

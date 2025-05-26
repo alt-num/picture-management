@@ -7,6 +7,7 @@ import { SubscriberFilters } from "@/components/SubscriberFilters";
 import { SubscribersTable } from "@/components/SubscribersTable";
 import { RemarkViewer } from "@/components/remarks/RemarkViewer";
 import { Remark } from "@/types/remark";
+import { apiClient } from "@/lib/api-client";
 
 const Dashboard = () => {
   const { toast } = useToast();
@@ -30,20 +31,17 @@ const Dashboard = () => {
     const fetchSubscribers = async () => {
       try {
         setIsLoading(true);
-        const response = await fetch('http://localhost:3001/api/profiles');
-        if (!response.ok) {
-          throw new Error('Failed to fetch subscribers');
-        }
-        const data = await response.json();
+        const data = await apiClient.getProfiles();
         // Add hasRemarks field based on remarks count
         const subscribersWithRemarkInfo = await Promise.all(
           data.map(async (subscriber: any) => {
-            const remarksResponse = await fetch(`http://localhost:3001/api/remarks/${subscriber.id}`);
-            if (remarksResponse.ok) {
-              const remarks = await remarksResponse.json();
+            try {
+              const remarks = await apiClient.getRemarks(subscriber.id);
               return { ...subscriber, hasRemarks: remarks.length > 0 };
+            } catch (error) {
+              console.error('Error fetching remarks:', error);
+              return { ...subscriber, hasRemarks: false };
             }
-            return { ...subscriber, hasRemarks: false };
           })
         );
         setSubscribers(subscribersWithRemarkInfo);
@@ -64,21 +62,7 @@ const Dashboard = () => {
 
   const handleAddSubscriber = async (formData: FormData) => {
     try {
-      console.log('Sending request to server...');
-      const response = await fetch('http://localhost:3001/api/profiles', {
-        method: 'POST',
-        body: formData
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Server error response:', errorData);
-        throw new Error(errorData.error || 'Failed to add subscriber');
-      }
-
-      const data = await response.json();
-      console.log('Server response:', data);
-      
+      const data = await apiClient.createProfile(formData);
       setSubscribers(prev => [...prev, data]);
       toast({
         title: "Success",
@@ -96,44 +80,24 @@ const Dashboard = () => {
 
   const handleEditSubscriber = async (formData: FormData) => {
     try {
-      // Get the subscriber ID from the form data
       const subscriberId = formData.get('id');
       if (!subscriberId) {
         throw new Error('No subscriber ID found');
       }
 
-      console.log('Editing subscriber:', subscriberId);
-      console.log('Form data entries:', Array.from(formData.entries()));
-
-      const response = await fetch(`http://localhost:3001/api/profiles/${subscriberId}`, {
-        method: 'PUT',
-        body: formData
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Server error:', errorData);
-        throw new Error(errorData.error || 'Failed to update subscriber');
-      }
-
-      const updated = await response.json();
-      console.log('Server response:', updated);
-
+      const updated = await apiClient.updateProfile(subscriberId.toString(), formData);
+      
       // Update the local state with the new data
       setSubscribers(prevSubscribers => {
         const newSubscribers = prevSubscribers.map(sub => 
           sub.id === subscriberId ? { ...sub, ...updated } : sub
         );
-        console.log('Updated subscribers:', newSubscribers);
         return newSubscribers;
       });
 
       // Refresh the subscribers list
-      const refreshResponse = await fetch('http://localhost:3001/api/profiles');
-      if (refreshResponse.ok) {
-        const refreshedData = await refreshResponse.json();
-        setSubscribers(refreshedData);
-      }
+      const refreshedData = await apiClient.getProfiles();
+      setSubscribers(refreshedData);
 
       // Close any open dialogs
       const dialog = document.querySelector('[role="dialog"]');
@@ -175,17 +139,7 @@ const Dashboard = () => {
         formData.append('paymentDate', update.paymentDate);
       }
 
-      const response = await fetch(`http://localhost:3001/api/profiles/${subscriberId}`, {
-        method: 'PUT',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update payment status');
-      }
-
-      const data = await response.json();
+      const data = await apiClient.updateProfile(subscriberId, formData);
       setSubscribers(prevSubscribers =>
         prevSubscribers.map(sub =>
           sub.id === subscriberId ? { ...sub, ...data } : sub
@@ -218,17 +172,7 @@ const Dashboard = () => {
         formData.append('claimedBy', update.claimedBy);
       }
 
-      const response = await fetch(`http://localhost:3001/api/profiles/${subscriberId}`, {
-        method: 'PUT',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update claim status');
-      }
-
-      const data = await response.json();
+      const data = await apiClient.updateProfile(subscriberId, formData);
       setSubscribers(prevSubscribers =>
         prevSubscribers.map(sub =>
           sub.id === subscriberId ? { ...sub, ...data } : sub
@@ -255,17 +199,7 @@ const Dashboard = () => {
       formData.append('id', subscriberId);
       formData.append('status', update.status);
 
-      const response = await fetch(`http://localhost:3001/api/profiles/${subscriberId}`, {
-        method: 'PUT',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update status');
-      }
-
-      const data = await response.json();
+      const data = await apiClient.updateProfile(subscriberId, formData);
       setSubscribers(prevSubscribers =>
         prevSubscribers.map(sub =>
           sub.id === subscriberId ? { ...sub, ...data } : sub
@@ -288,11 +222,7 @@ const Dashboard = () => {
 
   const handleRemarkClick = async (subscriberId: string) => {
     try {
-      const response = await fetch(`http://localhost:3001/api/remarks/${subscriberId}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch remarks');
-      }
-      const remarks = await response.json();
+      const remarks = await apiClient.getRemarks(subscriberId);
       setSelectedSubscriberRemarks(remarks);
       setSelectedSubscriber(subscribers.find(s => s.id === subscriberId));
       setIsRemarkViewerOpen(true);
@@ -310,35 +240,22 @@ const Dashboard = () => {
     if (!selectedSubscriber) return;
     
     try {
-      const response = await fetch('http://localhost:3001/api/remarks', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          ...remark,
-          profileId: selectedSubscriber.id,
-          date: new Date().toISOString(),
-        }),
+      await apiClient.addRemark({
+        ...remark,
+        profileId: selectedSubscriber.id,
+        date: new Date().toISOString(),
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to add remark');
-      }
-
       // Refresh remarks for the selected subscriber
-      const remarksResponse = await fetch(`http://localhost:3001/api/remarks/${selectedSubscriber.id}`);
-      if (remarksResponse.ok) {
-        const updatedRemarks = await remarksResponse.json();
-        setSelectedSubscriberRemarks(updatedRemarks);
-        
-        // Update the hasRemarks status in the subscribers list
-        setSubscribers(prev => prev.map(sub => 
-          sub.id === selectedSubscriber.id 
-            ? { ...sub, hasRemarks: true }
-            : sub
-        ));
-      }
+      const updatedRemarks = await apiClient.getRemarks(selectedSubscriber.id);
+      setSelectedSubscriberRemarks(updatedRemarks);
+      
+      // Update the hasRemarks status in the subscribers list
+      setSubscribers(prev => prev.map(sub => 
+        sub.id === selectedSubscriber.id 
+          ? { ...sub, hasRemarks: true }
+          : sub
+      ));
 
       toast({
         title: "Success",
@@ -358,27 +275,18 @@ const Dashboard = () => {
     if (!selectedSubscriber) return;
     
     try {
-      const response = await fetch(`http://localhost:3001/api/remarks/${remarkId}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to delete remark');
-      }
+      await apiClient.deleteRemark(remarkId);
 
       // Refresh remarks for the selected subscriber
-      const remarksResponse = await fetch(`http://localhost:3001/api/remarks/${selectedSubscriber.id}`);
-      if (remarksResponse.ok) {
-        const updatedRemarks = await remarksResponse.json();
-        setSelectedSubscriberRemarks(updatedRemarks);
-        
-        // Update the hasRemarks status in the subscribers list
-        setSubscribers(prev => prev.map(sub => 
-          sub.id === selectedSubscriber.id 
-            ? { ...sub, hasRemarks: updatedRemarks.length > 0 }
-            : sub
-        ));
-      }
+      const updatedRemarks = await apiClient.getRemarks(selectedSubscriber.id);
+      setSelectedSubscriberRemarks(updatedRemarks);
+      
+      // Update the hasRemarks status in the subscribers list
+      setSubscribers(prev => prev.map(sub => 
+        sub.id === selectedSubscriber.id 
+          ? { ...sub, hasRemarks: updatedRemarks.length > 0 }
+          : sub
+      ));
 
       toast({
         title: "Success",
